@@ -1,0 +1,18 @@
+﻿@page "/counter"
+@inject IState<CounterState> CounterState
+@inject IDispatcher Dispatcher
+@inherits StateComponent
+<PageTitle>Counter</PageTitle>
+
+<h1>Counter</h1>
+
+<p role="status">Current count: @CounterState.Value.Count</p>
+
+<button class="btn btn-primary" @onclick="IncrementCount">Click me</button>
+
+@code{
+    private void IncrementCount()
+    {
+        Dispatcher.Dispatch<CounterState>(s => s with { Count = s.Count + 1 });
+    }
+}
