@@ -11,7 +11,10 @@ public abstract class StateComponent : ComponentBase, IAsyncDisposable
     [Inject]
     private StateComponentSubscriber StateComponentSubscriber { get; set; } = default!;
 
-    private readonly ConcurrentDictionary<Type, Func<object, ValueTask>> _stateCallbacks = [];
+    [Inject]
+    private IStateFactory StateFactory { get; set; } = default!;
+
+    private readonly ConcurrentDictionary<string, Func<object, ValueTask>> _stateCallbacks = [];
     private readonly List<IStateSubscription> _stateSubscriptions = [];
     private bool _disposed;
 
@@ -42,23 +45,24 @@ public abstract class StateComponent : ComponentBase, IAsyncDisposable
         return ValueTask.CompletedTask;
     }
 
-    protected void RegisterStateChangeCallback<TState, TStateValue>(Action<TStateValue> callback)
-            where TState: IState<TStateValue> where TStateValue : notnull, new()
+    protected void RegisterStateChangeCallback<TStateValue>(Action<TStateValue> callback)
+            where TStateValue : notnull, new()
     {
-        RegisterStateChangeCallback<TState, TStateValue>(s => { callback(s); return ValueTask.CompletedTask; });
+        RegisterStateChangeCallback<TStateValue>(s => { callback(s); return ValueTask.CompletedTask; });
     }
 
-    protected void RegisterStateChangeCallback<TState, TStateValue>(Func<TStateValue, ValueTask> callback)
-        where TState : IState<TStateValue> where TStateValue : notnull, new()
+    protected void RegisterStateChangeCallback<TStateValue>(Func<TStateValue, ValueTask> callback)
+        where TStateValue : notnull, new()
     {
-        _stateCallbacks.TryAdd(typeof(TState), s => callback((TStateValue)s));
+        var state = StateFactory.CreateState<TStateValue>();
+        _stateCallbacks.TryAdd(state.Name, s => callback((TStateValue)s));
     }
 
     private void StateChanged(object stateValue, IState state)
     {
-        if (_stateCallbacks.TryGetValue(state.GetType(), out var callback))
+        if (_stateCallbacks.TryGetValue(state.Name, out var callback))
         {
-            Task.Run(async () => await callback(stateValue).ConfigureAwait(false));
+            InvokeAsync(async () => await callback(stateValue).ConfigureAwait(false));
         }
 
         InvokeAsync(StateHasChanged);

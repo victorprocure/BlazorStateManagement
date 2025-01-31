@@ -1,15 +1,19 @@
 ﻿@page "/fetchdata"
-
+@inherits StateComponent
 <PageTitle>Weather forecast</PageTitle>
 
 @using BlazorStateManagement.Demo.Data
 @inject WeatherForecastService ForecastService
+@inject IState<FetchState> FetchState
+@inject IDispatcher Dispatcher
 
 <h1>Weather forecast</h1>
 
 <p>This component demonstrates fetching data from a service.</p>
+Updated State: @StateUpdated
+<button @onclick="UpdateWeather" class="btn btn-primary" value="Update Weather" />
 
-@if (forecasts == null)
+@if (FetchState.Value.CurrentForcasts is null)
 {
     <p><em>Loading...</em></p>
 }
@@ -25,7 +29,7 @@ else
             </tr>
         </thead>
         <tbody>
-            @foreach (var forecast in forecasts)
+            @foreach (var forecast in FetchState.Value.CurrentForcasts)
             {
                 <tr>
                     <td>@forecast.Date.ToShortDateString()</td>
@@ -39,10 +43,15 @@ else
 }
 
 @code {
-    private WeatherForecast[]? forecasts;
-
-    protected override async Task OnInitializedAsync()
+    private bool StateUpdated { get; set; }
+    protected override void OnInitialized()
     {
-        forecasts = await ForecastService.GetForecastAsync(DateTime.Now);
+        base.OnInitialized();
+        RegisterStateChangeCallback<FetchState>(_ => StateUpdated = true);
+    }
+
+    private async Task UpdateWeather()
+    {
+        await Dispatcher.DispatchAsync<FetchState>(async s => new FetchState { CurrentForcasts = await ForecastService.GetForecastAsync(DateTime.Now) });
     }
 }
