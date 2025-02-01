@@ -46,7 +46,6 @@ else
     private bool StateUpdated { get; set; }
     protected override void OnInitialized()
     {
-        base.OnInitialized();
         RegisterStateChangeCallback<FetchState>(_ => StateUpdated = true);
     }
 

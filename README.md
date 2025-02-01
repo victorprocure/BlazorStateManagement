@@ -16,8 +16,6 @@ This should be enough get it up and running
 ## Using
 Any component you wish to access a state must inherit from `StateComponent`, the applies all the needed state subscriptions to make it is updated.
 
-*NOTE:* If you are overriding `OnInitialize()` in your component you MUST call  `base.OnInitialize()`
-
 Then all that is necessary is to `@inject` or `[Inject]` an `IState<T>` service.
 
 If you wish to change the state you can inject `IDispatcher` this will give you the option of changing the state both synchronously and asynchronously. With calls to : `Dispatch()` and `DispatchAsync()` respectively.
