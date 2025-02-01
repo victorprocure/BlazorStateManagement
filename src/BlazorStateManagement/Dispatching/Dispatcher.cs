@@ -30,12 +30,27 @@ internal sealed class Dispatcher : IDispatcher
         await _actionQueuer.QueueActionWorkAsync(ProcessStateAction).ConfigureAwait(false);
 
 
-        async ValueTask ProcessStateAction(CancellationToken ct)
+        ValueTask ProcessStateAction(CancellationToken ct)
         {
             if (ct.IsCancellationRequested)
-                return;
+                return ValueTask.FromCanceled(ct);
 
-            var newValue = await action(state.Value).ConfigureAwait(false);
+            var task = action(state.Value);
+
+            var shouldAwait = !task.IsCompleted && !task.IsCanceled;
+
+            if (!shouldAwait)
+            {
+                state.ReplaceValue(task.Result);
+                return ValueTask.CompletedTask;
+            }
+
+            return AwaitTaskWithSetter(task);
+        }
+
+        async ValueTask AwaitTaskWithSetter(Task<TState> task)
+        {
+            var newValue = await task.ConfigureAwait(false);
             state.ReplaceValue(newValue);
         }
     }

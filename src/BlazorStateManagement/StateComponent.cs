@@ -109,7 +109,6 @@ public abstract class StateComponent : IComponent, IHandleEvent, IHandleAfterRen
     /// <inheritdoc cref="ComponentBase.BuildRenderTree(RenderTreeBuilder)" />
     protected virtual void BuildRenderTree(RenderTreeBuilder builder)
     {
-
     }
 
     /// <inheritdoc cref="ComponentBase.DispatchExceptionAsync(Exception)" />
@@ -141,7 +140,6 @@ public abstract class StateComponent : IComponent, IHandleEvent, IHandleAfterRen
     /// <inheritdoc cref="ComponentBase.OnInitialized" />
     protected virtual void OnInitialized()
     {
-
     }
 
     /// <inheritdoc cref="ComponentBase.OnInitializedAsync" />
@@ -151,7 +149,6 @@ public abstract class StateComponent : IComponent, IHandleEvent, IHandleAfterRen
     /// <inheritdoc cref="ComponentBase.OnParametersSet" />
     protected virtual void OnParametersSet()
     {
-
     }
 
     /// <inheritdoc cref="ComponentBase.OnParametersSetAsync" />
@@ -181,7 +178,6 @@ public abstract class StateComponent : IComponent, IHandleEvent, IHandleAfterRen
         if (_hasPendingQueuedRender)
             return;
 
-
         if (_hasNeverRendered || ShouldRender() || _renderHandle.IsRenderingOnMetadataUpdate)
         {
             _hasPendingQueuedRender = true;
@@ -196,6 +192,22 @@ public abstract class StateComponent : IComponent, IHandleEvent, IHandleAfterRen
                 throw;
             }
         }
+    }
+
+    private Task CallOnInitializedAsync()
+    {
+        StateComponentSubscriber.InitializeComponentSubscribers(this, SubscribeToStateChange);
+
+        OnInitialized();
+        var task = OnInitializedAsync();
+        var shouldAwaitTask = task.Status != TaskStatus.RanToCompletion
+            && task.Status != TaskStatus.Canceled;
+
+        StateHasChanged();
+
+        return shouldAwaitTask
+            ? CallStateHasChangedOnAsyncCompletion(task)
+            : Task.CompletedTask;
     }
 
     private Task CallOnParametersSetAsync()
@@ -217,7 +229,7 @@ public abstract class StateComponent : IComponent, IHandleEvent, IHandleAfterRen
     {
         try
         {
-            await task.ConfigureAwait(true);
+            await task.ConfigureAwait(false);
         }
         catch
         {
@@ -232,39 +244,41 @@ public abstract class StateComponent : IComponent, IHandleEvent, IHandleAfterRen
         StateHasChanged();
     }
 
-    private void OnInitializedInternal()
+    private async ValueTask CallStateHasChangedOnAsyncCompletion(ValueTask task)
     {
-        StateComponentSubscriber.InitializeComponentSubscribers(this, SubscribeToStateChange);
-
-        OnInitialized();
-    }
-    private async Task RunInitAndSetParametersAsync()
-    {
-        OnInitializedInternal();
-
-        var task = OnInitializedAsync();
-        if(task.Status != TaskStatus.RanToCompletion && task.Status != TaskStatus.Canceled)
+        try
         {
-            StateHasChanged();
+            await task.ConfigureAwait(false);
+        }
+        catch
+        {
+            if (task.IsCanceled)
+                return;
 
-            try
-            {
-                await task.ConfigureAwait(true);
-            }
-            catch
-            {
-                if (!task.IsCanceled)
-                    throw;
-            }
+            throw;
         }
 
+        StateHasChanged();
+    }
+
+    private async Task RunInitAndSetParametersAsync()
+    {
+        await CallOnInitializedAsync().ConfigureAwait(false);
         await CallOnParametersSetAsync().ConfigureAwait(false);
     }
+
     private void StateChanged(object stateValue, IState state)
     {
         if (_stateCallbacks.TryGetValue(state.Name, out var callback))
         {
-            InvokeAsync(async () => await callback(stateValue).ConfigureAwait(false));
+            var task = callback(stateValue);
+            var shouldAwait = !task.IsCompleted && !task.IsCanceled;
+
+            if (shouldAwait)
+            {
+                InvokeAsync(async () => await CallStateHasChangedOnAsyncCompletion(task).ConfigureAwait(false));
+                return;
+            }
         }
 
         InvokeAsync(StateHasChanged);
